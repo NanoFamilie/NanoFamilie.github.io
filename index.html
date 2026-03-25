@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nano Family - Sicherheit</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #f3f4f6; --card: #ffffff; --danger: #ef4444; --success: #10b981; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        /* Login Screen */
+        .auth-box { background: var(--card); padding: 40px; border-radius: 12px; max-width: 400px; margin: 50px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { opacity: 0.9; }
+        .toggle-link { text-align: center; margin-top: 15px; color: var(--primary); cursor: pointer; text-decoration: underline; }
+        .hidden { display: none; }
+        
+        /* Dashboard */
+        .dashboard { display: none; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .family-member { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-bottom: 10px; border-radius: 8px; }
+        .role-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .role-parent { background: #dbeafe; color: #1e40af; }
+        .role-child { background: #fce7f3; color: #9d174d; }
+        .web-rule { display: flex; gap: 10px; margin-bottom: 10px; }
+        .web-rule input { flex: 1; margin: 0; }
+        .web-rule select { width: 120px; padding: 10px; border-radius: 6px; border: 1px solid #ddd; }
+        .message-box { background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 10px; }
+        .logout-btn { background: var(--danger); width: auto; padding: 8px 16px; margin: 0; }
+        h2 { margin-top: 0; color: #1f2937; }
+        .status { font-size: 14px; color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- LOGIN / REGISTER -->
+    <div id="authScreen" class="auth-box">
+        <h2 id="authTitle">Nano Family Login</h2>
+        <input type="email" id="email" placeholder="E-Mail Adresse">
+        <input type="password" id="password" placeholder="Passwort">
+        <button onclick="handleAuth()" id="authBtn">Anmelden</button>
+        <div class="toggle-link" onclick="toggleAuthMode()" id="toggleText">Noch kein Konto? Registrieren</div>
+        <div id="authStatus" class="status"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboardScreen" class="dashboard">
+        <div class="header">
+            <div>
+                <h1 style="margin:0;">🛡️ Nano Family</h1>
+                <span id="userDisplay">Angemeldet als: ...</span>
+            </div>
+            <button class="logout-btn" onclick="logout()">Abmelden</button>
+        </div>
+
+        <!-- FAMILIEN VERWALTUNG (Nur für Eltern) -->
+        <div id="parentPanel" class="card hidden">
+            <h2>👨‍👩‍👧‍👦 Familienverwaltung</h2>
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <input type="email" id="newMemberEmail" placeholder="E-Mail des Mitglieds">
+                <input type="password" id="newMemberPass" placeholder="Passwort setzen">
+                <select id="newMemberRole" style="padding:10px; border-radius:6px;">
+                    <option value="parent">Erwachsener (Eltern)</option>
+                    <option value="child">Kind</option>
+                </select>
+                <button onclick="addFamilyMember()" style="width:auto; margin:0;">Hinzufügen</button>
+            </div>
+            <div id="familyList"></div>
+        </div>
+
+        <!-- WEBSEITEN REGELN -->
+        <div class="card">
+            <h2>🌐 Webseiten Regeln</h2>
+            <p style="color:#666; font-size:14px;">Lege fest, welche Seiten blockiert oder erlaubt sind.</p>
+            <div id="webRulesList"></div>
+            <div class="web-rule">
+                <input type="text" id="newWebUrl" placeholder="Webseite (z.B. youtube.com)">
+                <select id="newWebAction">
+                    <option value="block">Blockieren 🔴</option>
+                    <option value="allow">Erlauben 🟢</option>
+                </select>
+                <button onclick="addWebRule()" style="width:auto; margin:0;">+</button>
+            </div>
+            <button onclick="saveRules()" style="margin-top:15px;">Regeln speichern</button>
+        </div>
+
+        <!-- NACHRICHTEN -->
+        <div class="card">
+            <h2>📩 Nachrichten an Kinder</h2>
+            <textarea id="messageText" placeholder="Nachricht schreiben..." style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; height:80px;"></textarea>
+            <button onclick="sendMessage()" style="margin-top:10px;">Senden</button>
+            <div id="messageHistory" class="message-box"></div>
+        </div>
+    </div>
+</div>
+
+<!-- FIREBASE MODULE -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+    // ---------------------------------------------------------
+    // HIER DEINE FIREBASE DATEN EINFÜGEN
+    // ---------------------------------------------------------
+    const firebaseConfig = {
+        apiKey: "DEIN_API_KEY",
+        authDomain: "DEIN_PROJEKT.firebaseapp.com",
+        projectId: "DEIN_PROJEKT_ID",
+        storageBucket: "DEIN_PROJEKT.appspot.com",
+        messagingSenderId: "DEINE_SENDER_ID",
+        appId: "DEINE_APP_ID"
+    };
+    // ---------------------------------------------------------
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let currentUser = null;
+    let isLoginMode = true;
+    let familyId = null;
+
+    // --- AUTH SYSTEM ---
+    window.toggleAuthMode = () => {
+        isLoginMode = !isLoginMode;
+        document.getElementById('authTitle').innerText = isLoginMode ? 'Nano Family Login' : 'Konto erstellen';
+        document.getElementById('authBtn').innerText = isLoginMode ? 'Anmelden' : 'Registrieren';
+        document.getElementById('toggleText').innerText = isLoginMode ? 'Noch kein Konto? Registrieren' : 'Bereits ein Konto? Anmelden';
+        document.getElementById('authStatus').innerText = '';
+    }
+
+    window.handleAuth = async () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const status = document.getElementById('authStatus');
+
+        try {
+            if (isLoginMode) {
+                await signInWithEmailAndPassword(auth, email, password);
+            } else {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                // Erstelle Familien-Dokument für neuen Nutzer
+                familyId = userCredential.user.uid;
+                await setDoc(doc(db, "families", familyId), {
+                    members: [{ email, role: 'parent', uid: userCredential.user.uid }],
+                    webRules: [],
+                    messages: []
+                });
+            }
+        } catch (error) {
+            status.innerText = "Fehler: " + error.message;
+        }
+    }
+
+    window.logout = () => signOut(auth);
+
+    onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        if (user) {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('dashboardScreen').style.display = 'block';
+            document.getElementById('userDisplay').innerText = 'Angemeldet als: ' + user.email;
+            
+            // Lade Familien-Daten
+            familyId = user.uid; // Vereinfachung: Jeder hat eigene Familie am Anfang
+            await loadFamilyData();
+        } else {
+            document.getElementById('authScreen').classList.remove('hidden');
+            document.getElementById('dashboardScreen').style.display = 'none';
+        }
+    });
+
+    // --- FAMILIEN DATEN LADEN ---
+    async function loadFamilyData() {
+        const familyRef = doc(db, "families", familyId);
+        
+        onSnapshot(familyRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                renderFamilyMembers(data.members);
+                renderWebRules(data.webRules);
+                renderMessages(data.messages);
+                
+                // Zeige Eltern-Panel nur wenn User Parent ist
+                const myRole = data.members.find(m => m.uid === currentUser.uid)?.role;
+                if (myRole === 'parent') {
+                    document.getElementById('parentPanel').classList.remove('hidden');
+                }
+            }
+        });
+    }
+
+    // --- FAMILIEN MITGLIEDER ---
+    window.addFamilyMember = async () => {
+        const email = document.getElementById('newMemberEmail').value;
+        const pass = document.getElementById('newMemberPass').value;
+        const role = document.getElementById('newMemberRole').value;
+
+        try {
+            // Erstelle Konto für neues Mitglied
+            const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+            
+            // Füge zur Familie hinzu
+            const familyRef = doc(db, "families", familyId);
+            await updateDoc(familyRef, {
+                members: arrayUnion({ email, role, uid: userCred.user.uid })
+            });
+            
+            alert("Mitglied hinzugefügt!");
+            document.getElementById('newMemberEmail').value = '';
+            document.getElementById('newMemberPass').value = '';
+        } catch (error) {
+            alert("Fehler: " + error.message);
+        }
+    }
+
+    function renderFamilyMembers(members) {
+        const list = document.getElementById('familyList');
+        list.innerHTML = members.map(m => `
+            <div class="family-member">
+                <span>${m.email} (${m.role === 'parent' ? 'Eltern' : 'Kind'})</span>
+                <span class="role-badge role-${m.role}">${m.role}</span>
+            </div>
+        `).join('');
+    }
+
+    // --- WEBSEITEN REGELN ---
+    window.addWebRule = () => {
+        const url = document.getElementById('newWebUrl').value;
+        const action = document.getElementById('newWebAction').value;
+        if (!url) return;
+        
+        const list = document.getElementById('webRulesList');
+        const div = document.createElement('div');
+        div.className = 'web-rule';
+        div.innerHTML = `
+            <input type="text" value="${url}" readonly style="background:#f0f0f0;">
+            <select class="rule-action">
+                <option value="block" ${action === 'block' ? 'selected' : ''}>Blockieren 🔴</option>
+                <option value="allow" ${action === 'allow' ? 'selected' : ''}>Erlauben 🟢</option>
+            </select>
+            <button onclick="this.parentElement.remove()" style="width:auto; margin:0; background:var(--danger);">X</button>
+        `;
+        list.appendChild(div);
+        document.getElementById('newWebUrl').value = '';
+    }
+
+    window.saveRules = async () => {
+        const rules = [];
+        document.querySelectorAll('#webRulesList .web-rule').forEach(div => {
+            rules.push({
+                url: div.querySelector('input').value,
+                action: div.querySelector('select').value
+            });
+        });
+
+        await updateDoc(doc(db, "families", familyId), { webRules: rules });
+        alert("Regeln gespeichert! Kinder-Apps werden aktualisiert.");
+    }
+
+    function renderWebRules(rules) {
+        const list = document.getElementById('webRulesList');
+        list.innerHTML = rules.map(r => `
+            <div class="web-rule">
+                <input type="text" value="${r.url}" readonly style="background:#f0f0f0;">
+                <span style="padding:10px; font-weight:bold;">${r.action === 'block' ? '🔴 Blockiert' : '🟢 Erlaubt'}</span>
+            </div>
+        `).join('');
+    }
+
+    // --- NACHRICHTEN ---
+    window.sendMessage = async () => {
+        const text = document.getElementById('messageText').value;
+        if (!text) return;
+
+        await addDoc(collection(db, "families", familyId, "messages"), {
+            text,
+            from: currentUser.email,
+            timestamp: new Date().toISOString()
+        });
+
+        document.getElementById('messageText').value = '';
+    }
+
+    function renderMessages(messages) {
+        const box = document.getElementById('messageHistory');
+        box.innerHTML = messages.slice(-5).reverse().map(m => `
+            <div style="margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:8px;">
+                <b>${m.from}</b>: ${m.text}
+                <div style="font-size:11px; color:#999;">${m.timestamp}</div>
+            </div>
+        `).join('');
+    }
+</script>
+
+</body>
+</html>
